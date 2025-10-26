@@ -1,0 +1,105 @@
+{
+  "search_mode": {
+    "description": "默认搜索模式",
+    "type": "string",
+    "hint": "选择默认搜索返回的结果类型",
+    "default": "全部",
+    "options": [
+      "全部",
+      "仅有码",
+      "仅无码"
+    ]
+  },
+  "mosaic_reduce_first": {
+    "description": "有码搜索时, 是否优先显示无码破解, 而不是中文字幕",
+    "type": "bool",
+    "hint": "开启后, 在有码搜索中将优先展示无码破解的结果",
+    "default": false
+  },
+  "censored_engines": {
+    "description": "有码搜索引擎URL列表",
+    "type": "list",
+    "items": {
+      "type": "string"
+    },
+    "default": [
+      "https://missav.ai/cn/search/%s",
+      "https://jable.tv/search/%s/",
+      "https://7mmtv.sx/zh/searchform_search/all/index.html#POST#search_keyword=%s&search_type=searchall&op=search",
+      "https://supjav.com/zh/?s=%s",
+      "https://www.jav777.xyz/?s=%s"
+    ]
+  },
+  "uncensored_engines": {
+    "description": "无码搜索引擎URL列表",
+    "type": "list",
+    "items": {
+      "type": "string"
+    },
+    "default": [
+      "https://missav.ai/cn/search/%s",
+      "https://123av.com/zh/search?keyword=%s",
+      "https://7mmtv.sx/zh/searchform_search/all/index.html#POST#search_keyword=%s&search_type=searchall&op=search",
+      "https://jav.guru/?s=%s",
+      "https://supjav.com/zh/?s=%s"
+    ]
+  },
+  "error_keywords": {
+    "description": "需要拦截的关键字列表",
+    "hint": "消息内容中包含列表中任一关键字时，消息将被拦截",
+    "type": "list",
+    "items": {
+        "type": "string"
+    },
+    "default": [
+        "请求失败",
+        "出现异常",
+        "抱歉",
+        "您好",
+        "请稍后",
+        "隐私政策"
+    ]
+  },
+  "proxy": {
+    "description": "代理地址",
+    "type": "string",
+    "hint": "例如 http://127.0.0.1:7890，留空则不使用代理。",
+    "default": ""
+  },
+  "timeout": {
+    "description": "请求超时时间（秒）",
+    "type": "int",
+    "hint": "网络请求的超时时间，单位为秒。",
+    "default": 10,
+    "min": 5,
+    "max": 60
+  },
+  "cover_mosaic_level": {
+    "description": "封面图打码程度",
+    "type": "float",
+    "hint": "设置封面图的模糊程度，0为不打码，数值越大越模糊，建议0.1-0.5之间。",
+    "default": 0.3
+  },
+  "cover_regexes": {
+    "description": "封面图提取正则表达式规则列表",
+    "type": "list",
+    "hint": "一行一个规则, 格式为 `域名|正则表达式`。",
+    "items": {
+      "type": "string"
+    },
+    "default": [
+      "missav.ai|class=\\\"plyr__poster\\\" style=\\\"background-image: url\\(\\\"([^\\\"]+)\\\"\\);",
+      "7mmtv.sx|<img src=\\\"([^\\\"]+/censored/[^\\\"]+)\\\">",
+      "123av.com|class=\\\"plyr__poster\\\" style=\\\"background-image: url\\(\\\"([^\\\"]+)\\\"\\);",
+      "jable.tv|class=\\\"h5-div\\\" data-src=\\\"([^\\\"]+)\\\"",
+      "supjav.com|<meta property=\\\"og:image\\\" content=\\\"([^\\\"]+)\\\">",
+      "jav.guru|<img class=\\\"card-img-top\\\" src=\\\"([^\\\"]+)\\\">"
+    ]
+  },
+  "return_details": {
+    "description": "是否在结果中返回链接和标题",
+    "type": "bool",
+    "hint": "开启后，将在封面图下方附带作品标题和页面链接。",
+    "default": true
+  }
+}
