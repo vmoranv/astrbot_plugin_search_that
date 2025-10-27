@@ -355,3 +355,189 @@ class SearchThatPlugin(Star):
         except Exception as e:
             logger.error(f"下载或处理封面图失败: {e}")
         return None
+
+    @filter.command("女优")
+    async def actress_search_handler(self, event: AstrMessageEvent, *, name: str):
+        """
+        根据女优姓名搜索其个人信息。
+        """
+        if not name:
+            yield event.plain_result("请输入要搜索的女优姓名。")
+            return
+
+        yield event.plain_result(f"正在查找「{name}」的信息...")
+
+        # 并行查询所有数据源
+        try:
+            tasks = [
+                self._fetch_av2ch_info(name),
+                self._fetch_wikipedia_info(name),
+                self._fetch_avwiki_info(name)
+            ]
+            results = await asyncio.gather(*tasks)
+
+            # 合并结果
+            final_info = {"year": None, "height": None, "measurements": None}
+            for res in results:
+                if res:
+                    if res.get("year") and not final_info.get("year"):
+                        final_info["year"] = res["year"]
+                    if res.get("height") and not final_info.get("height"):
+                        final_info["height"] = res["height"]
+                    if res.get("measurements") and not final_info.get("measurements"):
+                        final_info["measurements"] = res["measurements"]
+
+            # 格式化并发送
+            formatted_str = self._format_actress_info(
+                final_info["year"], final_info["height"], final_info["measurements"]
+            )
+
+            if formatted_str:
+                yield event.plain_result(f"「{name}」\n{formatted_str}")
+            else:
+                logger.info(f"所有数据源均未找到「{name}」的有效信息。")
+                yield event.plain_result(f"未能找到关于「{name}」的有效信息。")
+
+        except Exception as e:
+            logger.error(f"查询女优 {name} 时发生错误: {e}")
+            yield event.plain_result(f"查询「{name}」时发生错误，请检查后台日志。")
+
+    def _format_actress_info(self, year: Optional[str], height: Optional[str], measurements: Optional[str]) -> Optional[str]:
+        """格式化女优信息，如果信息不全则返回 None"""
+        year = year or '?'
+        height = height or '?'
+        measurements = measurements or '?'
+
+        # 只有在所有信息都未知时才返回 None
+        if year == '?' and height == '?' and measurements == '?':
+            return None
+
+        if height.isdigit() and int(height) >= 168:
+            height = f"⭐{height}"
+        
+        return f"[出生] {year}\n[身高] {height}\n[三围] {measurements}"
+
+    async def _fetch_av2ch_info(self, name: str) -> Optional[Dict[str, str]]:
+        """从 av2ch.net 获取信息"""
+        if not self.http_client: return None
+        try:
+            url = 'https://av2ch.net/avsearch/avs.php'
+            data = f"keyword={name}&gte_height=min&lte_height=max&gte_bust=min&lte_bust=max&gte_waist=min&lte_waist=max&gte_hip=min&lte_hip=max&gte_cup=min&lte_cup=max&gte_age=min&lte_age=max&genre_01=&genre_02="
+            logger.info(f"AV2CH request URL: {url} with data keyword={name}")
+            headers = {
+                'Content-type': 'application/x-www-form-urlencoded',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36'
+            }
+            async with self.http_client.post(url, data=data, headers=headers, proxy=self.config.get("proxy")) as response:
+                if response.status != 200:
+                    logger.warning(f"AV2CH request for {name} failed with status {response.status}")
+                    return None
+                html = await response.text()
+                
+                box_actress_re = re.compile(r'<div class="box_actress">(.*?)<div class="link_actress">', re.DOTALL)
+                text_actress_html = None
+                
+                for match in box_actress_re.finditer(html):
+                    box_html = match.group(1)
+                    if f'<h2 class="h2_actress">{name}</h2>' in box_html:
+                        text_match = re.search(r'<div class="text_actress">(.*?)</div>', box_html, re.DOTALL)
+                        if text_match:
+                            text_actress_html = text_match.group(1)
+                            break
+                
+                if not text_actress_html:
+                    return None
+
+                year_match = re.search(r'(\d{4})年', text_actress_html)
+                height_match = re.search(r'身長<b>(\d{3})</b>cm', text_actress_html)
+                measure_match = re.search(r'[BＢ]([\d?]+)cm.*?[WＷ]([\d?]+)cm.*?[HＨ]([\d?]+)cm', text_actress_html)
+
+                year = year_match.group(1) if year_match else None
+                height = height_match.group(1) if height_match else None
+                measurements = None
+                if measure_match:
+                    b, w, h = measure_match.groups()
+                    if b != '?': # Only form measurements if not '?'
+                        measurements = f"B{b}-W{w}-H{h}"
+
+                logger.info(f"AV2CH Extracted: year={year}, height={height}, measurements={measurements}")
+                return {"year": year, "height": height, "measurements": measurements}
+        except Exception as e:
+            logger.error(f"从 av2ch 获取 {name} 信息失败: {e}")
+            return None
+
+    async def _fetch_wikipedia_info(self, name: str) -> Optional[Dict[str, str]]:
+        """从 ja.wikipedia.org 获取信息"""
+        if not self.http_client: return None
+        try:
+            url = f"https://ja.wikipedia.org/wiki/{name}"
+            logger.info(f"Wikipedia request URL: {url}")
+            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36'}
+            async with self.http_client.get(url, headers=headers, proxy=self.config.get("proxy")) as response:
+                if response.status != 200:
+                    logger.warning(f"Wikipedia request for {name} failed with status {response.status}")
+                    return None
+                html = await response.text()
+
+                year_match = re.search(r'生年月日.*?>.*?(\d{4})年', html, re.DOTALL)
+                height_match = re.search(r'身長.*?>.*?(\d{3})\s*cm', html, re.DOTALL)
+                measure_match = re.search(r'スリーサイズ.*?>.*?(\d{2,3})\s*-\s*(\d{2,3})\s*-\s*(\d{2,3})\s*cm', html, re.DOTALL)
+
+                year = year_match.group(1) if year_match else None
+                if year and int(year) < 1980:
+                    return None
+                height = height_match.group(1) if height_match else None
+                measurements = None
+                if measure_match:
+                    measurements = f"B{measure_match.group(1)}-W{measure_match.group(2)}-H{measure_match.group(3)}"
+
+                logger.info(f"Wikipedia Extracted: year={year}, height={height}, measurements={measurements}")
+                return {"year": year, "height": height, "measurements": measurements}
+        except Exception as e:
+            logger.error(f"从 Wikipedia 获取 {name} 信息失败: {e}")
+            return None
+
+    async def _fetch_avwiki_info(self, name: str) -> Optional[Dict[str, str]]:
+        """从 av-wiki.net 获取信息"""
+        if not self.http_client: return None
+        try:
+            search_url = f"https://av-wiki.net/?s={name}&post_type=product"
+            logger.info(f"AV-WIKI search URL: {search_url}")
+            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36'}
+            detail_url = None
+            async with self.http_client.get(search_url, headers=headers, proxy=self.config.get("proxy")) as response:
+                html = await response.text()
+                url_match = re.search(rf"<a href=['\"](https://av-wiki\.net/actress/[\w-]+/)['\"] rel=['\"]bookmark['\"]>{re.escape(name)}[^<]*</a>", html)
+                if url_match:
+                    detail_url = url_match.group(1)
+
+            if not detail_url:
+                return None
+
+            logger.info(f"AV-WIKI detail URL: {detail_url}")
+            async with self.http_client.get(detail_url, headers=headers, proxy=self.config.get("proxy")) as response:
+                html = await response.text()
+                
+                info_text_match = re.search(r'<dl class="actress-data">(.*?)</dl>', html, re.DOTALL)
+                if not info_text_match:
+                    return None
+                info_text = info_text_match.group(1)
+
+                year_match = re.search(r'<dd>(\d{4})年', info_text)
+                height_match = re.search(r'<dd>(\d{3})cm', info_text)
+                measure_match = re.search(r'<dd>([B]\d{2,3}.*?[W]\d{2,3}.*?[H]\d{2,3})', info_text)
+
+                year = year_match.group(1) if year_match else None
+                height = height_match.group(1) if height_match else None
+                measurements = None
+                if measure_match:
+                    clean_measure = re.sub(r'<[^>]+>', '', measure_match.group(1)).strip()
+                    parts = re.findall(r'([BWH])(\d{2,3})', clean_measure)
+                    if len(parts) == 3:
+                        measurements = f"{parts[0][0]}{parts[0][1]}-{parts[1][0]}{parts[1][1]}-{parts[2][0]}{parts[2][1]}"
+                
+                logger.info(f"AV-WIKI Extracted: year={year}, height={height}, measurements={measurements}")
+                return {"year": year, "height": height, "measurements": measurements}
+        except Exception as e:
+            logger.error(f"从 av-wiki 获取 {name} 信息失败: {e}")
+            return None
